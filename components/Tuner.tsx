@@ -25,12 +25,13 @@ export function Tuner() {
   const [showTryAgain, setShowTryAgain] = useState(false);
   const [trials, setTrials] = useState<TrialResult[]>([]);
 
-  const { isInitialized, initialize, getFrequencyData, getVolume } = useAudioEngine();
+  const { isInitialized, initialize, getFrequencyData, getVolume, audioContext } = useAudioEngine();
   const { calibrationData, letterSensitivity } = usePhonicsApp();
 
   const animationFrameRef = useRef<number | undefined>(undefined);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const currentIndexRef = useRef(0);
+  const targetLetterRef = useRef<HTMLDivElement | null>(null);
 
   const SUCCESS_THRESHOLD = 70; // 70% match score to succeed
 
@@ -120,6 +121,7 @@ export function Tuner() {
 
           // Check for success
           if (result.confidence >= SUCCESS_THRESHOLD) {
+            celebrateMatch();
             setIsRunning(false);
             setStatus(`✅ SUCCESS! Matched ${targetLetter} (${result.confidence}%)`);
             setShowTryAgain(false);
@@ -249,6 +251,114 @@ export function Tuner() {
     URL.revokeObjectURL(url);
   };
 
+  const createConfetti = (centerEl: HTMLElement) => {
+    const rect = centerEl.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    const colors = ['#FDD835', '#7CB342', '#00BCD4', '#FF5722', '#9C27B0'];
+
+    for (let i = 0; i < 20; i++) {
+      const particle = document.createElement('div');
+      particle.style.position = 'fixed';
+      particle.style.left = centerX + 'px';
+      particle.style.top = centerY + 'px';
+      particle.style.width = '10px';
+      particle.style.height = '10px';
+      particle.style.borderRadius = Math.random() > 0.5 ? '50%' : '0';
+      particle.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+      particle.style.pointerEvents = 'none';
+      particle.style.zIndex = '9999';
+
+      document.body.appendChild(particle);
+
+      const angle = (Math.PI * 2 * i) / 20;
+      const velocity = 100 + Math.random() * 100;
+      const vx = Math.cos(angle) * velocity;
+      const vy = Math.sin(angle) * velocity;
+
+      let x = 0, y = 0, time = 0;
+      const gravity = 500;
+
+      const animate = () => {
+        time += 0.016; // ~60fps
+        x = vx * time;
+        y = vy * time + 0.5 * gravity * time * time;
+
+        particle.style.transform = `translate(${x}px, ${y}px) rotate(${time * 360}deg)`;
+        particle.style.opacity = Math.max(0, 1 - time * 1.5).toString();
+
+        if (time < 1) {
+          requestAnimationFrame(animate);
+        } else {
+          particle.remove();
+        }
+      };
+
+      requestAnimationFrame(animate);
+    }
+  };
+
+  const celebrateMatch = () => {
+    const targetEl = targetLetterRef.current;
+    if (!targetEl) return;
+
+    // Play success sound
+    if (audioContext) {
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime); // C5
+      oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.1); // E5
+      oscillator.frequency.setValueAtTime(783.99, audioContext.currentTime + 0.2); // G5
+
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
+
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.4);
+    }
+
+    // Exciting animation sequence
+    targetEl.style.transition = 'all 0.15s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
+
+    // Bounce and color sequence
+    targetEl.style.transform = 'scale(1.5) rotate(5deg)';
+    targetEl.style.color = '#FDD835';
+
+    setTimeout(() => {
+      targetEl.style.transform = 'scale(1.3) rotate(-5deg)';
+      targetEl.style.color = '#7CB342';
+    }, 150);
+
+    setTimeout(() => {
+      targetEl.style.transform = 'scale(1.6) rotate(0deg)';
+      targetEl.style.color = '#00BCD4';
+    }, 300);
+
+    setTimeout(() => {
+      targetEl.style.transform = 'scale(1.2)';
+      targetEl.style.color = '#FF5722';
+    }, 450);
+
+    setTimeout(() => {
+      targetEl.style.transform = 'scale(1.4)';
+      targetEl.style.color = '#9C27B0';
+    }, 600);
+
+    setTimeout(() => {
+      targetEl.style.transition = 'all 0.3s ease-out';
+      targetEl.style.transform = 'scale(1)';
+      targetEl.style.color = '#FDD835';
+    }, 800);
+
+    // Create confetti particles
+    createConfetti(targetEl);
+  };
+
   const confidenceBarColor = matchScore >= SUCCESS_THRESHOLD ? '#7CB342' : matchScore >= 50 ? '#FDD835' : '#F4511E';
 
   return (
@@ -289,6 +399,7 @@ export function Tuner() {
       </div>
 
       <div
+        ref={el => { targetLetterRef.current = el; }}
         id="targetLetter"
         style={{
           textAlign: 'center',
