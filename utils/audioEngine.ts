@@ -30,7 +30,7 @@ export class AudioEngine {
 
   getFrequencyData(): Uint8Array | null {
     if (!this.analyser || !this.dataArray) return null;
-    this.analyser.getByteFrequencyData(this.dataArray);
+    this.analyser.getByteFrequencyData(this.dataArray as Uint8Array);
     return this.dataArray;
   }
 
