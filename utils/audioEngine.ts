@@ -30,7 +30,8 @@ export class AudioEngine {
 
   getFrequencyData(): Uint8Array | null {
     if (!this.analyser || !this.dataArray) return null;
-    this.analyser.getByteFrequencyData(this.dataArray as Uint8Array);
+    // @ts-expect-error - TypeScript strict type checking issue with ArrayBufferLike
+    this.analyser.getByteFrequencyData(this.dataArray);
     return this.dataArray;
   }
 
