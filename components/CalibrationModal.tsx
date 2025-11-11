@@ -27,7 +27,7 @@ export function CalibrationModal({ isOpen, letter, profileId, onClose, onComplet
 
   const { isInitialized, initialize, getFrequencyData, getSnapshot, getVolume, stream } = useAudioEngine();
   const audioRecorderRef = useRef(createAudioRecorder());
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | undefined>(undefined);
   const lastPeakTimeRef = useRef(0);
   const audioClipsRef = useRef<Blob[]>([]);
   const canvasRefs = useRef<(HTMLCanvasElement | null)[]>([]);
