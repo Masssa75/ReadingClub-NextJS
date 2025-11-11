@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { usePhonicsApp } from '@/lib/hooks/usePhonicsApp';
 import { PHONEMES, GROUP_TITLES } from '@/lib/constants';
 import { CalibrationModal } from '@/components/CalibrationModal';
+import { Tuner } from '@/components/Tuner';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('calibrate');
@@ -139,10 +140,9 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Other Tabs - Placeholders */}
+        {/* Tuner Tab */}
         <div className={`tab-content ${activeTab === 'tuner' ? 'active' : ''}`}>
-          <h2>Tuner - Practice Mode</h2>
-          <p>Tuner component will go here</p>
+          <Tuner />
         </div>
 
         <div className={`tab-content ${activeTab === 'game3' ? 'active' : ''}`}>

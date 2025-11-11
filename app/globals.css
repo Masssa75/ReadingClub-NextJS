@@ -503,3 +503,230 @@ h1 {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.05); }
 }
+
+/* ==================== Tuner Component ==================== */
+
+.tuner-container {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.tuner-content {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.tuner-detection {
+  text-align: center;
+  padding: 40px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+}
+
+.tuner-letter-display {
+  font-size: 120px;
+  font-weight: bold;
+  color: white;
+  text-shadow: 0 4px 8px rgba(0,0,0,0.3);
+  line-height: 1;
+  margin-bottom: 10px;
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tuner-confidence-label {
+  font-size: 18px;
+  color: rgba(255,255,255,0.9);
+  margin-bottom: 15px;
+}
+
+.tuner-confidence-bar {
+  width: 100%;
+  max-width: 400px;
+  height: 30px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 15px;
+  overflow: hidden;
+  margin: 0 auto;
+}
+
+.tuner-confidence-fill {
+  height: 100%;
+  transition: width 0.2s ease, background-color 0.3s ease;
+  border-radius: 15px;
+}
+
+.tuner-spectrum {
+  background: #1a1a1a;
+  border-radius: 8px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.tuner-controls {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.tuner-btn {
+  padding: 15px 40px;
+  font-size: 18px;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.tuner-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.tuner-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tuner-btn-start {
+  background: #7CB342;
+  color: white;
+}
+
+.tuner-btn-start:hover:not(:disabled) {
+  background: #689F38;
+}
+
+.tuner-btn-stop {
+  background: #F4511E;
+  color: white;
+}
+
+.tuner-btn-stop:hover {
+  background: #E64A19;
+}
+
+.tuner-btn-reset {
+  background: #546E7A;
+  color: white;
+}
+
+.tuner-btn-reset:hover {
+  background: #455A64;
+}
+
+.tuner-stats {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.tuner-stat {
+  background: white;
+  padding: 20px 30px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  text-align: center;
+  min-width: 120px;
+}
+
+.tuner-stat-value {
+  font-size: 36px;
+  font-weight: bold;
+  color: #667eea;
+  margin-bottom: 5px;
+}
+
+.tuner-stat-label {
+  font-size: 14px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tuner-letters {
+  background: white;
+  padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.tuner-letter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  gap: 10px;
+}
+
+.tuner-letter-btn {
+  position: relative;
+  aspect-ratio: 1;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+}
+
+.tuner-letter-btn.calibrated {
+  border-color: #7CB342;
+  background: linear-gradient(135deg, #f5f5f5 0%, #e8f5e9 100%);
+}
+
+.tuner-letter-btn.calibrated:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(124, 179, 66, 0.3);
+  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+}
+
+.tuner-letter-btn.not-calibrated {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tuner-letter-text {
+  font-size: 24px;
+  font-weight: bold;
+  color: #333;
+}
+
+.tuner-letter-icon {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  color: #7CB342;
+  opacity: 0.7;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .tuner-letter-display {
+    font-size: 80px;
+    min-height: 80px;
+  }
+
+  .tuner-btn {
+    padding: 12px 30px;
+    font-size: 16px;
+  }
+
+  .tuner-stat-value {
+    font-size: 28px;
+  }
+
+  .tuner-letter-grid {
+    grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
+  }
+}
