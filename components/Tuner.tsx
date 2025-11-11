@@ -7,84 +7,162 @@ import { PHONEMES } from '@/lib/constants';
 import { detectBestMatch } from '@/utils/patternMatching';
 import { downsampleFrequencies } from '@/utils/frequencyAnalysis';
 
-interface TunerStats {
-  attempts: number;
-  matches: number;
-  accuracy: number;
+interface TrialResult {
+  letter: string;
+  success: boolean;
+  score: number;
+  timestamp: number;
 }
 
 export function Tuner() {
-  const [isListening, setIsListening] = useState(false);
-  const [detectedLetter, setDetectedLetter] = useState<string>('');
-  const [confidence, setConfidence] = useState<number>(0);
-  const [stats, setStats] = useState<TunerStats>({ attempts: 0, matches: 0, accuracy: 0 });
-  const [lastDetection, setLastDetection] = useState<string>('');
+  const [isRunning, setIsRunning] = useState(false);
+  const [targetLetter, setTargetLetter] = useState<string>('?');
+  const [matchScore, setMatchScore] = useState<number>(0);
+  const [volume, setVolume] = useState<number>(0);
+  const [status, setStatus] = useState('Click Start to begin');
+  const [alphabetMode, setAlphabetMode] = useState(false);
+  const [alphabetProgress, setAlphabetProgress] = useState('');
+  const [showTryAgain, setShowTryAgain] = useState(false);
+  const [trials, setTrials] = useState<TrialResult[]>([]);
 
-  const { isInitialized, initialize, getFrequencyData, getSnapshot } = useAudioEngine();
+  const { isInitialized, initialize, getFrequencyData, getVolume } = useAudioEngine();
   const { calibrationData, letterSensitivity } = usePhonicsApp();
 
   const animationFrameRef = useRef<number | undefined>(undefined);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const detectionCooldownRef = useRef<number>(0);
+  const currentIndexRef = useRef(0);
 
-  const DETECTION_COOLDOWN = 500; // ms between detections
-  const CONFIDENCE_THRESHOLD = 30; // Minimum confidence to show detection
+  const SUCCESS_THRESHOLD = 70; // 70% match score to succeed
 
-  // Real-time detection loop
+  // Get all calibrated letters
+  const calibratedLetters = Object.keys(calibrationData);
+
+  // Set initial target letter
   useEffect(() => {
-    if (!isListening || !isInitialized) return;
+    if (calibratedLetters.length > 0 && targetLetter === '?') {
+      setNextTarget();
+    }
+  }, [calibratedLetters.length]);
 
-    const detectLoop = () => {
-      if (!isListening) return;
+  const setNextTarget = () => {
+    if (calibratedLetters.length === 0) {
+      setTargetLetter('?');
+      setStatus('No calibrated letters. Go to Calibrate tab first.');
+      return;
+    }
 
-      const now = Date.now();
-
-      // Get current snapshot
-      const snapshot = getSnapshot();
-      if (snapshot) {
-        // Run pattern matching
-        const result = detectBestMatch(snapshot, calibrationData, letterSensitivity);
-
-        if (result && result.confidence >= CONFIDENCE_THRESHOLD) {
-          setDetectedLetter(result.letter);
-          setConfidence(result.confidence);
-
-          // Track stats (only if enough time passed since last detection)
-          if (now - detectionCooldownRef.current > DETECTION_COOLDOWN) {
-            const isMatch = result.letter === lastDetection;
-            setStats(prev => {
-              const newAttempts = prev.attempts + 1;
-              const newMatches = isMatch ? prev.matches + 1 : prev.matches;
-              return {
-                attempts: newAttempts,
-                matches: newMatches,
-                accuracy: Math.round((newMatches / newAttempts) * 100)
-              };
-            });
-            setLastDetection(result.letter);
-            detectionCooldownRef.current = now;
-          }
-        } else {
-          // No confident detection
-          setDetectedLetter('');
-          setConfidence(0);
+    if (alphabetMode) {
+      // A→Z loop mode
+      const currentLetter = PHONEMES[currentIndexRef.current]?.letter;
+      if (calibrationData[currentLetter]) {
+        setTargetLetter(currentLetter);
+        setAlphabetProgress(`${currentIndexRef.current + 1} / 26`);
+      } else {
+        // Skip uncalibrated letters
+        currentIndexRef.current++;
+        if (currentIndexRef.current >= PHONEMES.length) {
+          currentIndexRef.current = 0;
+          setStatus('✅ Completed full alphabet! Starting over...');
         }
+        setNextTarget();
+        return;
+      }
+    } else {
+      // Random elimination mode
+      const randomIndex = Math.floor(Math.random() * calibratedLetters.length);
+      setTargetLetter(calibratedLetters[randomIndex]);
+    }
 
-        // Draw spectrum visualization
-        drawSpectrum();
+    setMatchScore(0);
+    setShowTryAgain(false);
+    setStatus('Listening...');
+  };
+
+  const skipLetter = () => {
+    if (alphabetMode) {
+      currentIndexRef.current++;
+      if (currentIndexRef.current >= PHONEMES.length) {
+        currentIndexRef.current = 0;
+      }
+    }
+    setNextTarget();
+  };
+
+  const tryAgain = () => {
+    setShowTryAgain(false);
+    setMatchScore(0);
+    setIsRunning(true);
+    setStatus('Listening...');
+  };
+
+  // Analysis loop
+  useEffect(() => {
+    if (!isRunning || !isInitialized) {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      return;
+    }
+
+    const analyze = () => {
+      if (!isRunning) return;
+
+      // Get frequency data
+      const freqData = getFrequencyData();
+      if (freqData) {
+        const downsampled = downsampleFrequencies(freqData, 64);
+
+        // Try to match target
+        const result = detectBestMatch(downsampled, calibrationData, letterSensitivity);
+
+        if (result && result.letter === targetLetter) {
+          setMatchScore(result.confidence);
+
+          // Check for success
+          if (result.confidence >= SUCCESS_THRESHOLD) {
+            setIsRunning(false);
+            setStatus(`✅ SUCCESS! Matched ${targetLetter} (${result.confidence}%)`);
+            setShowTryAgain(false);
+
+            // Record trial
+            setTrials(prev => [...prev, {
+              letter: targetLetter,
+              success: true,
+              score: result.confidence,
+              timestamp: Date.now()
+            }]);
+
+            // Auto-advance after 1 second
+            setTimeout(() => {
+              setNextTarget();
+              setIsRunning(true);
+            }, 1000);
+          }
+        } else if (result) {
+          // Wrong letter detected
+          setMatchScore(0);
+          setStatus(`Heard: ${result.letter} (${result.confidence}%) - Try ${targetLetter}`);
+        }
       }
 
-      animationFrameRef.current = requestAnimationFrame(detectLoop);
+      // Update volume
+      const vol = getVolume();
+      setVolume(Math.round(vol));
+
+      // Draw spectrum
+      drawSpectrum();
+
+      animationFrameRef.current = requestAnimationFrame(analyze);
     };
 
-    detectLoop();
+    analyze();
 
     return () => {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isListening, isInitialized, calibrationData, letterSensitivity, getSnapshot, lastDetection]);
+  }, [isRunning, isInitialized, targetLetter, calibrationData, letterSensitivity, getFrequencyData, getVolume]);
 
   const drawSpectrum = useCallback(() => {
     const canvas = canvasRef.current;
@@ -106,156 +184,189 @@ export function Tuner() {
     const barWidth = width / downsampled.length;
     downsampled.forEach((value, i) => {
       const barHeight = (value / 255) * height;
-      const hue = (i / downsampled.length) * 120 + 100; // Green to blue
+      const hue = (i / downsampled.length) * 120 + 100;
       ctx.fillStyle = `hsl(${hue}, 70%, 50%)`;
-      ctx.fillRect(i * barWidth, height - barHeight, barWidth - 1, barHeight);
+      ctx.fillRect(i * barWidth, height - barHeight, barWidth, barHeight);
     });
   }, [getFrequencyData]);
 
-  const handleStart = async () => {
-    if (!isInitialized) {
-      await initialize();
+  const toggleTuner = async () => {
+    if (!isRunning) {
+      // Start
+      if (!isInitialized) {
+        await initialize();
+      }
+      setIsRunning(true);
+      if (targetLetter === '?') {
+        setNextTarget();
+      }
+    } else {
+      // Stop
+      setIsRunning(false);
+      setStatus('Stopped');
     }
-    setIsListening(true);
   };
 
-  const handleStop = () => {
-    setIsListening(false);
-    setDetectedLetter('');
-    setConfidence(0);
+  const toggleAlphabetMode = () => {
+    const newMode = !alphabetMode;
+    setAlphabetMode(newMode);
+    if (newMode) {
+      currentIndexRef.current = 0;
+      setAlphabetProgress('1 / 26');
+    } else {
+      setAlphabetProgress('');
+    }
+    setNextTarget();
   };
 
-  const handleReset = () => {
-    setStats({ attempts: 0, matches: 0, accuracy: 0 });
-    setLastDetection('');
-    detectionCooldownRef.current = 0;
+  const playCalibrationRecording = () => {
+    const calibration = calibrationData[targetLetter];
+    if (calibration?.audioUrl) {
+      const audio = new Audio(calibration.audioUrl);
+      audio.play().catch(err => console.error('Audio playback failed:', err));
+    }
   };
 
-  const playLetterSound = (letter: string) => {
-    const phoneme = PHONEMES.find(p => p.letter === letter);
-    if (!phoneme?.audioUrl) return;
-    const audio = new Audio(phoneme.audioUrl);
-    audio.play().catch(err => console.error('Audio playback failed:', err));
+  const viewStats = () => {
+    const successCount = trials.filter(t => t.success).length;
+    const avgScore = trials.length > 0
+      ? Math.round(trials.reduce((sum, t) => sum + t.score, 0) / trials.length)
+      : 0;
+
+    alert(`Stats:\n\nTotal Trials: ${trials.length}\nSuccessful: ${successCount}\nAverage Score: ${avgScore}%`);
   };
 
-  // Check if user has any calibrations
-  const hasCalibrations = Object.keys(calibrationData).length > 0;
+  const exportResults = () => {
+    const csv = 'Letter,Success,Score,Timestamp\n' +
+      trials.map(t => `${t.letter},${t.success},${t.score},${new Date(t.timestamp).toISOString()}`).join('\n');
 
-  const getConfidenceColor = (conf: number) => {
-    if (conf >= 70) return '#7CB342'; // Green
-    if (conf >= 50) return '#FDD835'; // Yellow
-    return '#F4511E'; // Red
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tuner-results-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
+
+  const confidenceBarColor = matchScore >= SUCCESS_THRESHOLD ? '#7CB342' : matchScore >= 50 ? '#FDD835' : '#F4511E';
 
   return (
-    <div className="tuner-container">
-      <h2>Tuner - Practice Mode</h2>
+    <div className="tuner-original">
+      <div style={{ textAlign: 'center', marginBottom: '20px', color: '#ddd', fontSize: '18px' }}>
+        Say this sound:
+        <span
+          onClick={playCalibrationRecording}
+          style={{
+            cursor: 'pointer',
+            fontSize: '24px',
+            marginLeft: '10px',
+            display: 'inline-block',
+            opacity: 0.7,
+            transition: 'opacity 0.2s'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+          onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+          title="Play my recording"
+        >
+          🔊
+        </span>
+      </div>
 
-      {!hasCalibrations && (
-        <div className="info-box" style={{ backgroundColor: '#FFF3CD', color: '#856404', marginBottom: '20px' }}>
-          ⚠️ You need to calibrate at least one letter before using the Tuner.
-        </div>
-      )}
-
-      <div className="tuner-content">
-        {/* Detection Display */}
-        <div className="tuner-detection">
-          <div className="tuner-letter-display">
-            {detectedLetter || '?'}
-          </div>
-          <div className="tuner-confidence-label">
-            {detectedLetter ? `${confidence}% confidence` : 'Waiting for sound...'}
-          </div>
-          <div className="tuner-confidence-bar">
-            <div
-              className="tuner-confidence-fill"
-              style={{
-                width: `${confidence}%`,
-                backgroundColor: getConfidenceColor(confidence)
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Spectrum Visualization */}
-        <div className="tuner-spectrum">
-          <canvas
-            ref={el => { canvasRef.current = el; }}
-            width={600}
-            height={150}
-            style={{ width: '100%', height: '150px', borderRadius: '8px', backgroundColor: '#1a1a1a' }}
+      <div style={{ textAlign: 'center', marginBottom: '15px' }}>
+        <label style={{ color: '#ddd', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={alphabetMode}
+            onChange={toggleAlphabetMode}
+            style={{ marginRight: '5px' }}
           />
-        </div>
+          Alphabet Test Mode (A→Z loop)
+        </label>
+        {alphabetProgress && (
+          <span style={{ marginLeft: '15px', color: '#FDD835' }}>{alphabetProgress}</span>
+        )}
+      </div>
 
-        {/* Controls */}
-        <div className="tuner-controls">
-          {!isListening ? (
-            <button
-              className="tuner-btn tuner-btn-start"
-              onClick={handleStart}
-              disabled={!hasCalibrations}
-            >
-              Start Listening
-            </button>
-          ) : (
-            <button
-              className="tuner-btn tuner-btn-stop"
-              onClick={handleStop}
-            >
-              Stop
-            </button>
-          )}
-          <button
-            className="tuner-btn tuner-btn-reset"
-            onClick={handleReset}
-          >
-            Reset Stats
+      <div
+        id="targetLetter"
+        style={{
+          textAlign: 'center',
+          fontSize: '180px',
+          fontWeight: 'bold',
+          color: '#FDD835',
+          margin: '20px 0',
+          textShadow: '0 10px 30px rgba(253, 216, 53, 0.5)',
+          transition: 'all 0.3s'
+        }}
+      >
+        {targetLetter}
+      </div>
+
+      <div className="confidence-bar">
+        <div
+          className="confidence-fill"
+          style={{
+            width: `${matchScore}%`,
+            backgroundColor: confidenceBarColor
+          }}
+        />
+      </div>
+
+      <div className="stats">
+        <div className="stat-item">
+          <div>Match Score</div>
+          <div className="stat-value">{matchScore}%</div>
+        </div>
+        <div className="stat-item">
+          <div>Volume</div>
+          <div className="stat-value">{volume}%</div>
+        </div>
+      </div>
+
+      <canvas
+        ref={el => { canvasRef.current = el; }}
+        id="spectrumCanvas"
+        width={800}
+        height={150}
+      />
+
+      <div
+        id="status"
+        style={{
+          fontFamily: 'monospace',
+          fontSize: '11px',
+          whiteSpace: 'pre-wrap',
+          lineHeight: 1.4,
+          color: '#aaa',
+          marginTop: '10px',
+          textAlign: 'center'
+        }}
+      >
+        {status}
+      </div>
+
+      <div className="actions">
+        <button className="btn" onClick={toggleTuner}>
+          {isRunning ? '⏸ Stop Game' : '▶ Start Game'}
+        </button>
+        {showTryAgain && (
+          <button className="btn" onClick={tryAgain} style={{ background: '#7CB342' }}>
+            🔄 Try Again
           </button>
-        </div>
+        )}
+        <button className="btn" onClick={skipLetter} style={{ background: '#999' }}>
+          Skip
+        </button>
+      </div>
 
-        {/* Stats */}
-        <div className="tuner-stats">
-          <div className="tuner-stat">
-            <div className="tuner-stat-value">{stats.attempts}</div>
-            <div className="tuner-stat-label">Attempts</div>
-          </div>
-          <div className="tuner-stat">
-            <div className="tuner-stat-value">{stats.matches}</div>
-            <div className="tuner-stat-label">Matches</div>
-          </div>
-          <div className="tuner-stat">
-            <div className="tuner-stat-value">{stats.accuracy || 0}%</div>
-            <div className="tuner-stat-label">Accuracy</div>
-          </div>
-        </div>
-
-        {/* Letter Reference Grid */}
-        <div className="tuner-letters">
-          <h3 style={{ marginBottom: '15px', fontSize: '18px' }}>Reference Sounds</h3>
-          <div className="tuner-letter-grid">
-            {PHONEMES.map((phoneme) => {
-              const isCalibrated = !!calibrationData[phoneme.letter];
-              return (
-                <button
-                  key={phoneme.letter}
-                  className={`tuner-letter-btn ${isCalibrated ? 'calibrated' : 'not-calibrated'}`}
-                  onClick={() => playLetterSound(phoneme.letter)}
-                  disabled={!isCalibrated}
-                  title={isCalibrated ? `Click to hear ${phoneme.letter}` : 'Not calibrated'}
-                >
-                  <div className="tuner-letter-text">{phoneme.letter}</div>
-                  {isCalibrated && (
-                    <div className="tuner-letter-icon">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
-                      </svg>
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+      <div className="actions" style={{ marginTop: '15px' }}>
+        <button className="btn" onClick={viewStats} style={{ background: '#5E35B1' }}>
+          📊 View Stats ({trials.length} trials)
+        </button>
+        <button className="btn" onClick={exportResults} style={{ background: '#00897B' }}>
+          💾 Export Results
+        </button>
       </div>
     </div>
   );
