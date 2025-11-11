@@ -266,7 +266,7 @@ export function CalibrationModal({ isOpen, letter, profileId, onClose, onComplet
                   </svg>
                 </div>
                 <canvas
-                  ref={el => canvasRefs.current[index] = el}
+                  ref={el => { canvasRefs.current[index] = el; }}
                   width={100}
                   height={80}
                 />
